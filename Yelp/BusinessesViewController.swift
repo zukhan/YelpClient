@@ -9,20 +9,33 @@
 import UIKit
 
 class BusinessesViewController: UIViewController, UITableViewDataSource, UITableViewDelegate,
-        FiltersViewControllerDelegate {
+        FiltersViewControllerDelegate, UISearchControllerDelegate, UISearchResultsUpdating {
 
     @IBOutlet weak var tableView: UITableView!
+    var searchController: UISearchController!
 
     var businesses: [Business]!
-    
+    var searchTerm = ""
+    var filterCriteria: FilterCriteria?
+
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        searchController = UISearchController.init(searchResultsController: nil)
+        searchController.hidesNavigationBarDuringPresentation = false
+        searchController.dimsBackgroundDuringPresentation = false
+        self.navigationItem.titleView = searchController.searchBar
+        searchController.delegate = self
+        searchController.searchResultsUpdater = self
 
         tableView.delegate = self
         tableView.dataSource = self
         tableView.rowHeight = UITableViewAutomaticDimension
         tableView.estimatedRowHeight = 120
 
+        search()
+
+        /*
         Business.searchWithTerm("Thai", completion: { (businesses: [Business]!, error: NSError!) -> Void in
             self.businesses = businesses
             self.tableView.reloadData()
@@ -32,16 +45,6 @@ class BusinessesViewController: UIViewController, UITableViewDataSource, UITable
                 print(business.address!)
             }
         })
-
-/* Example of Yelp search with more search options specified
-        Business.searchWithTerm("Restaurants", sort: .Distance, categories: ["asianfusion", "burgers"], deals: true) { (businesses: [Business]!, error: NSError!) -> Void in
-            self.businesses = businesses
-            
-            for business in businesses {
-                print(business.name!)
-                print(business.address!)
-            }
-        }
 */
     }
 
@@ -65,17 +68,31 @@ class BusinessesViewController: UIViewController, UITableViewDataSource, UITable
         }
     }
 
+    func updateSearchResultsForSearchController(searchController: UISearchController) {
+        if let searchText = searchController.searchBar.text {
+            searchTerm = searchText
+            search()
+        }
+    }
+
     override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
+        self.dismissViewControllerAnimated(false, completion: nil)
+
         let navigationController = segue.destinationViewController as! UINavigationController
         let filtersViewController = navigationController.topViewController as! FiltersViewController
         filtersViewController.delegate = self
+        if let filterCriteria = filterCriteria {
+            filtersViewController.filterCriteria = filterCriteria
+        }
     }
 
-    func filtersViewController(filtersViewcontroller: FiltersViewController, didUpdateFilters filters: [String : AnyObject]) {
+    func filtersViewController(filtersViewController: FiltersViewController, didUpdateFilters filterCriteria: FilterCriteria) {
+        self.filterCriteria = filterCriteria
+        search()
+    }
 
-        let categories = filters["categories"] as? [String]
-        
-        Business.searchWithTerm("Restaurants", sort: nil, categories: categories, deals: nil)
+    func search() {
+        Business.searchWithTerm(searchTerm, distance: filterCriteria?.distance, sort: filterCriteria?.sortBy, categories: filterCriteria?.categories, deals: filterCriteria?.dealSwitchState)
             { (businesses: [Business]!, error: NSError!) -> Void in
                 self.businesses = businesses
                 self.tableView.reloadData()

@@ -9,7 +9,7 @@
 import UIKit
 
 @objc protocol FiltersViewControllerDelegate {
-    func filtersViewController(filtersViewcontroller: FiltersViewController, didUpdateFilters filters: [String:AnyObject])
+    func filtersViewController(filtersViewController: FiltersViewController, didUpdateFilters filterCriteria: FilterCriteria)
 }
 
 class FiltersViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, SwitchCellDelegate {
@@ -18,8 +18,11 @@ class FiltersViewController: UIViewController, UITableViewDataSource, UITableVie
     weak var delegate: FiltersViewControllerDelegate?
 
     var categories: [[String:String]]!
-    var switchStates = [Int:Bool]()
 
+    var filterCriteria = FilterCriteria()
+
+    var isDistanceMenuExpanded = false
+    var isSortByMenuExpanded = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -42,37 +45,146 @@ class FiltersViewController: UIViewController, UITableViewDataSource, UITableVie
     @IBAction func onSearchButton(sender: AnyObject) {
         dismissViewControllerAnimated(true, completion: nil)
 
-        var filters = [String : AnyObject]()
-
         var selectedCategories = [String]()
-        for (row, isSelected) in switchStates {
+        for (row, isSelected) in filterCriteria.switchStates {
             if isSelected {
                 selectedCategories.append(categories[row]["code"]!)
             }
-            if selectedCategories.count > 0 {
-                filters["categories"] = selectedCategories
-            }
         }
 
-        delegate?.filtersViewController(self, didUpdateFilters: filters)
+        /*
+        let fc = FilterCriteria()
+        if selectedCategories.count > 0 {
+            fc.categories = selectedCategories
+        }
+        fc.dealSwitchState = filterCriteria.dealSwitchState
+        fc.sortBy = filterCriteria.selectedSortByValue()
+        fc.distance = filterCriteria.selectedDistanceValue()
+        */
+        filterCriteria.categories = selectedCategories
+        filterCriteria.sortBy = filterCriteria.selectedSortByValue()
+        filterCriteria.distance = filterCriteria.selectedDistanceValue()
+        delegate?.filtersViewController(self, didUpdateFilters: filterCriteria)
+    }
+
+    func numberOfSectionsInTableView(tableView: UITableView) -> Int {
+        return 4
+    }
+
+    func tableView(tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        switch section {
+            case 0:
+                return nil
+            case 1:
+                return "Distance"
+            case 2:
+                return "Sort By"
+            case 3:
+                return "Category"
+            default:
+                return nil
+        }
     }
 
     func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return categories.count
+        switch section {
+            case 0:
+                return 1
+            case 1:
+                return isDistanceMenuExpanded ? filterCriteria.distanceValuesText.count : 1
+            case 2:
+                return isSortByMenuExpanded ? filterCriteria.sortByValuesText.count : 1
+            case 3:
+                return categories.count
+            default:
+                return 0
+        }
     }
 
     func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCellWithIdentifier("SwitchCell", forIndexPath: indexPath) as! SwitchCell
-        cell.switchLabel.text = categories[indexPath.row]["name"]
-        cell.delegate = self
+        let idx = indexPath.row
+        switch indexPath.section {
+            case 0:
+                let cell = getSwitchCell(indexPath)
+                cell.switchLabel.text = "Offering a Deal"
+                cell.onSwitch.on = filterCriteria.dealSwitchState
+                return cell
+            case 1:
+                let cell = getDropDownCell(indexPath)
+                cell.titleLabel.text = isDistanceMenuExpanded ? filterCriteria.distanceText(idx) : filterCriteria.selectedDistanceText()
+                return cell
+            case 2:
+                let cell = getDropDownCell(indexPath)
+                cell.titleLabel.text = isSortByMenuExpanded ? filterCriteria.sortByText(idx) : filterCriteria.selectedSortByText()
+                return cell
+            case 3:
+                let cell = getSwitchCell(indexPath)
+                cell.switchLabel.text = categories[idx]["name"]
+                cell.onSwitch.on = filterCriteria.switchStates[idx] ?? false
+                return cell
+            default:
+                return getDropDownCell(indexPath)
+        }
+    }
 
-        cell.onSwitch.on = switchStates[indexPath.row] ?? false
+    func getSwitchCell(indexPath: NSIndexPath) -> SwitchCell {
+        let cell = tableView.dequeueReusableCellWithIdentifier("SwitchCell", forIndexPath: indexPath) as! SwitchCell
+        cell.delegate = self
         return cell
+    }
+
+    func getDropDownCell(indexPath: NSIndexPath) -> DropDownCell {
+        return tableView.dequeueReusableCellWithIdentifier("DropDownCell", forIndexPath: indexPath) as! DropDownCell
+    }
+
+    func tableView(tableView: UITableView, didSelectRowAtIndexPath indexPath: NSIndexPath) {
+        let section = indexPath.section
+        if section == 1 {
+            filterCriteria.selectedDistanceIdx = indexPath.row
+            isDistanceMenuExpanded = !isDistanceMenuExpanded
+            changeSectionRowCount(section, newCount: isDistanceMenuExpanded ? filterCriteria.distanceValuesText.count : 1)
+
+        } else if indexPath.section == 2 {
+            filterCriteria.selectedSortByIdx = indexPath.row
+            isSortByMenuExpanded = !isSortByMenuExpanded
+            changeSectionRowCount(section, newCount: isSortByMenuExpanded ? filterCriteria.sortByValuesText.count : 1)
+        }
+    }
+
+    func changeSectionRowCount(section: Int, newCount: Int) {
+        let oldCount = tableView.numberOfRowsInSection(section)
+
+        let startIdx = min(oldCount, newCount)
+        let endIdx = max(oldCount, newCount)
+
+        var indexPaths = [NSIndexPath]()
+
+        for var i = startIdx; i<endIdx; i++ {
+            indexPaths.append(NSIndexPath.init(forRow: i, inSection: section))
+        }
+
+        tableView.beginUpdates()
+
+        if oldCount > 0 {
+            tableView.reloadRowsAtIndexPaths([NSIndexPath.init(forRow: 0, inSection: section)], withRowAnimation: .Fade)
+        }
+
+        if newCount > oldCount {
+            tableView.insertRowsAtIndexPaths(indexPaths, withRowAnimation: .Fade)
+        } else {
+            tableView.deleteRowsAtIndexPaths(indexPaths, withRowAnimation: .Fade)
+        }
+
+        tableView.endUpdates()
     }
 
     func switchCell(switchCell: SwitchCell, didChangeValue value: Bool) {
         let indexPath = tableView.indexPathForCell(switchCell)!
-        switchStates[indexPath.row] = value
+        if indexPath.section == 0 {
+            filterCriteria.dealSwitchState = value
+        } else if indexPath.section == 3 {
+            filterCriteria.switchStates[indexPath.row] = value
+        }
     }
 
     func yelpCategories() -> [[String:String]] {
